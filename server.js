@@ -43,14 +43,6 @@ const db = mysql.createPool({
   port: process.env.DB_PORT,
 });
 
-// Conectar a MySQL
-db.connect((err) => {
-  if (err) {
-    console.error("❌ Error conectando a MySQL:", err);
-    return;
-  }
-  console.log("✅ Conectado a MySQL");
-});
 
 // 🔐 Middleware para validar API Key
 const API_KEY = process.env.API_KEY || "supersecreto";
