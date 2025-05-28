@@ -8,20 +8,25 @@ app.use(cors());
 app.use(express.json()); // Para recibir JSON en las peticiones
 
 const allowedOrigins = [
-    "http://localhost:3000",  // Desarrollo local
-    "https://capacitacionsn.cruzrojamexicana.org.mx",  // Producción (ajústalo según tu URL real)
+    "http://localhost:3000", // Desarrollo local
+    "https://capacitacionsn.cruzrojamexicana.org.mx", // Producción
+    "https://capacitacion.cruzrojamexicana.org.mx", // Producción
 ];
 
-// Configurar CORS correctamente
 app.use(cors({
-    origin: (origin, callback) => {
+    origin: function (origin, callback) {
+        // Si no hay origin (como en Postman) o está permitido, deja pasar
         if (!origin || allowedOrigins.includes(origin)) {
             callback(null, true);
         } else {
+            console.log("❌ CORS bloqueó esta petición desde:", origin);
             callback(new Error("No permitido por CORS"));
         }
-    }
+    },
+    methods: ["GET"],
+    allowedHeaders: ["Content-Type", "x-api-key"],
 }));
+
 
 app.use(express.json()); // Permitir JSON en las peticiones
 
