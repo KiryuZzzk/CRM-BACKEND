@@ -10,6 +10,7 @@ app.use(express.json()); // Para recibir JSON en las peticiones
 const allowedOrigins = [
   "http://localhost:3000", // Desarrollo local
   "https://capacitacionsn.cruzrojamexicana.org.mx", // Producción real
+  "https://capacitacion.cruzrojamexicana.org.mx", // Producción real
 ];
 
 // 🛡️ Configuración avanzada de CORS
