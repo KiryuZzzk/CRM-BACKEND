@@ -7,32 +7,35 @@ const mysql = require("mysql2");
 const app = express();
 
 // ──────────────────────────────────────────────────────────────
-// CORS
+// CORS — incluye OPTIONS (preflight) y tu header x-api-key
 // ──────────────────────────────────────────────────────────────
 const allowedOrigins = [
-  "http://localhost:3000", // Desarrollo local
-  "https://capacitacionsn.cruzrojamexicana.org.mx", // Producción
-  "https://capacitacion.cruzrojamexicana.org.mx",   // Producción (alias)
+  "http://localhost:3000",
+  "https://capacitacionsn.cruzrojamexicana.org.mx",
+  "https://capacitacion.cruzrojamexicana.org.mx",
 ];
 
-app.use(
-  cors({
-    origin(origin, callback) {
-      // En llamadas tipo Postman no hay origin; permitir
-      if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
-      console.log("❌ CORS bloqueó esta petición desde:", origin);
-      return callback(new Error("No permitido por CORS"));
-    },
-    methods: ["GET"], // Solo lectura en este servicio
-    allowedHeaders: ["Content-Type", "x-api-key"],
-    credentials: true,
-  })
-);
+const corsOptions = {
+  origin(origin, callback) {
+    // En Postman/healthchecks puede no venir origin
+    if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
+    console.log("❌ CORS bloqueó esta petición desde:", origin);
+    return callback(new Error("No permitido por CORS"));
+  },
+  methods: ["GET", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "x-api-key"],
+  credentials: true,
+  optionsSuccessStatus: 204,
+};
 
-app.use(express.json()); // Una sola vez
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions)); // Responder preflight para todo
+
+app.use(express.json());
 
 // ──────────────────────────────────────────────────────────────
-/** Auth por API Key (x-api-key) */
+// Auth por API Key (x-api-key)
+// ──────────────────────────────────────────────────────────────
 const API_KEY = process.env.API_KEY || "supersecreto";
 const authMiddleware = (req, res, next) => {
   const apiKey = req.header("x-api-key");
@@ -44,7 +47,7 @@ const authMiddleware = (req, res, next) => {
 
 // ──────────────────────────────────────────────────────────────
 // MySQL: Pool robusto con keep-alive + reintento
-// Vars esperadas: DB_HOST, DB_USER, DB_PASSWORD, DB_NAME, DB_PORT
+// Vars: DB_HOST, DB_USER, DB_PASSWORD, DB_NAME, DB_PORT
 // ──────────────────────────────────────────────────────────────
 let pool;
 
@@ -58,14 +61,13 @@ function createPool() {
     waitForConnections: true,
     connectionLimit: 10,
     queueLimit: 0,
-    // Mantener viva la conexión TCP (Render/Railway la dormitan)
     enableKeepAlive: true,
     keepAliveInitialDelay: 0,
   });
 
   p.on("connection", (conn) => {
-    // Alargar timeouts de sesión (ajústalo a tus políticas)
-    conn.query("SET SESSION wait_timeout = 28800");       // 8 horas
+    // Alargar timeouts de sesión (ajústalo si tu proveedor corta antes)
+    conn.query("SET SESSION wait_timeout = 28800");       // 8 h
     conn.query("SET SESSION interactive_timeout = 28800");
   });
 
@@ -78,14 +80,14 @@ function createPool() {
 
 pool = createPool();
 
-// Ping periódico (cada 4 min) para que el proveedor no cierre sockets por inactividad
+// Ping periódico para evitar que el proveedor cierre por inactividad
 setInterval(() => {
   pool.query("SELECT 1", (err) => {
     if (err) console.warn("⚠️ Keep-alive ping error:", err.code || err.message);
   });
 }, 240000);
 
-// Helper de consulta con reintento si la conexión del pool está cerrada/muerta
+// Helper de consulta con reintento si el socket está cerrado
 async function dbQuery(sql, params = []) {
   return new Promise((resolve, reject) => {
     pool.query(sql, params, (err, rows) => {
@@ -101,9 +103,7 @@ async function dbQuery(sql, params = []) {
 
       if (isClosed) {
         console.warn("🔁 Conexión cerrada: recreando pool y reintentando 1 vez…");
-        try {
-          pool.end?.(() => {});
-        } catch (_) {}
+        try { pool.end?.(() => {}); } catch (_) {}
         pool = createPool();
         return pool.query(sql, params, (err2, rows2) => {
           if (err2) return reject(err2);
@@ -116,13 +116,13 @@ async function dbQuery(sql, params = []) {
   });
 }
 
-// (Opcional) comprobar conexión al arrancar
+// Probar conexión al arrancar
 dbQuery("SELECT 1 AS ok")
   .then(() => console.log("✅ Conectado a MySQL (pool activo)"))
   .catch((err) => console.error("❌ Error conectando a MySQL:", err.code, err.message));
 
 // ──────────────────────────────────────────────────────────────
-// Healthchecks
+/** Healthchecks */
 // ──────────────────────────────────────────────────────────────
 app.get("/healthz", (_req, res) => {
   res.json({ ok: true, ts: new Date().toISOString() });
@@ -139,7 +139,7 @@ app.get("/__debug/db-ping", authMiddleware, async (_req, res) => {
 
 // ──────────────────────────────────────────────────────────────
 // Rutas de certificados (GET)
-// Nota: el front filtra por CURP/folio; si quieres filtro en servidor, lo añadimos.
+// Nota: el front filtra por CURP/folio; si quieres filtro server-side, lo añadimos.
 // ──────────────────────────────────────────────────────────────
 app.get("/certificadosAPS", authMiddleware, async (_req, res) => {
   try {
@@ -179,7 +179,7 @@ app.listen(PORT, () => {
   console.log(`🚀 Servidor corriendo en http://localhost:${PORT}`);
 });
 
-// (Opcional) Cierre limpio en SIGTERM/SIGINT
+// Cierre limpio
 process.on("SIGTERM", () => {
   console.log("🧹 Cerrando pool MySQL…");
   pool.end(() => process.exit(0));
