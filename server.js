@@ -58,18 +58,7 @@ const authMiddleware = (req, res, next) => {
   next();
 };
 
-// Ruta para obtener certificadosAPS (Protegida con API Key)
-app.get("/certificadosAPS", authMiddleware, (req, res) => {
-  const sql = "SELECT * FROM certificadosAPS"; // o "SELECT * FROM APS.certificadosAPS"
-  db.query(sql, (err, results) => {
-    if (err) {
-      console.error("❌ Error en la consulta APS:", err);
-      res.status(500).json({ error: "Error en la consulta" });
-      return;
-    }
-    res.json(results);
-  });
-});
+
 
 
 // Ruta para obtener certificadosFONE (Protegida con API Key)
